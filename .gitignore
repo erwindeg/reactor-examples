@@ -16,7 +16,7 @@ target/
 **/out/*
 rebel.xml
 .bin
-
+reactor-examples.iml
 
 *.db
 **/*.db
