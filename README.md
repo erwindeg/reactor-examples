@@ -9,7 +9,7 @@ In the next examples we will be calling the callAPI function as shown below. Thi
 
 ```java
 private Mono<String> callAPI() {
-        return Mono.just("").flatMap(v -> {
+        return Mono.defer(() -> {
             System.out.println("API call ");
             return api.monoWithException();
         });
