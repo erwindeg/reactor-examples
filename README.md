@@ -62,7 +62,7 @@ callAPI().retryBackoff(5, ofMillis(10), ofMillis(1000))
 
 For our final example we make use of the [reactor-extra](https://github.com/reactor/reactor-addons/#reactor-extra) library. This library consists additional operators. It also allows to create
 a Retry object which can be passed into the retryWhen() function. We use Retry.any() to retry all exception types. There are also functions to conditionally select when to retry (anyOf, allBut, onlyIf).
-The exponentialBackoff operator can be used to construct an exponential backoff strategy (to emulate a random backoff like the previouse example use exponentialBackoffWithJitter):
+The exponentialBackoff operator can be used to construct an exponential backoff strategy (to emulate a random backoff like the previous example use exponentialBackoffWithJitter):
 
 ```java
 callAPI().retryWhen(any().exponentialBackoff(ofMillis(10), ofMillis(1000)).retryMax(5))

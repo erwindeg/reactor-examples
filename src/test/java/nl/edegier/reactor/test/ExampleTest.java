@@ -76,7 +76,7 @@ public class ExampleTest {
 
 
     private Mono<String> callAPI() {
-        return Mono.just("").flatMap(v -> {
+        return Mono.defer(() -> {
             System.out.println("API call ");
             return api.monoWithException();
         });
