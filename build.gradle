@@ -4,11 +4,15 @@ plugins {
 
 repositories {
     mavenCentral()
+    maven { url 'https://repo.spring.io/milestone' }
 }
 
-dependencies{
+dependencies {
     compile group: 'io.projectreactor', name: 'reactor-core', version: '3.2.5.RELEASE'
     compile group: 'io.projectreactor.addons', name: 'reactor-extra', version: '3.2.2.RELEASE'
     testCompile group: 'org.junit.jupiter', name: 'junit-jupiter-api', version: '5.3.2'
     testCompile group: 'org.mockito', name: 'mockito-junit-jupiter', version: '2.24.0'
+    testCompile 'io.projectreactor.tools:blockhound-junit-platform:1.0.0.M3'
+    testCompile 'io.projectreactor.tools:blockhound:1.0.0.M3'
+    testCompile 'org.junit.platform:junit-platform-launcher:1.0.0'
 }
