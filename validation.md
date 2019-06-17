@@ -1,9 +1,11 @@
-#Awesome title about reactive
+#Parallel short-circuiting with Reactive Programming
 
 ##Dealing with asynchronous and parallel validation
 
-There are scenarios when the outcome of a code block is depends on several separate expressions and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to wait for outcome of every single expression.
-Thinks of it like a `short circuit` in `if` statements, but in a parallel manner. One of the very common use cases is when you are developing an enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
+There are scenarios when the outcome of a code block is depends on several separate independent expressions (jobs) and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to wait for outcome of every single expression.
+Thinks of it like a `short-circuit` in `if` statements, but in a parallel manner. In evaluating `A && B`, if `A` is false, then `B` is short-circuited (not evaluated) because it has no effect on the end result.
+
+One of the very common use cases is when you are developing an enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
 
 To validate a request, you might need to do multiple `validations` and if all of them validate the request successfully, then we can continue with serving the request.
 
@@ -84,7 +86,9 @@ public class ValidationResponse {
 
 So what we aim for is to validate the user's request and reject it after 2 secs and do not wait for the other validator.
 
-##First solution: using Java Streams API and CompletableFuture
+##Don't use java 8 Stream API
+
+First solution that might come to mind is using parallel feature of java Stream API and then use a short circuit operator like `findFirst()`. 
 
 ```
     public void validate(){
@@ -133,9 +137,10 @@ found successful one. Time: 2019-06-12T11:49:55.827Z Thread is ForkJoinPool.comm
 after findFirst. Time: 2019-06-12T11:49:55.828Z
 ```
 
-This is very interesting as you can see Java 8 Stream API worked as intended until findFirst(). And although it already has the first response, but it findFirst() does not pass it down the stream until all elements get processed. So in our case it unnecessarily waits also for Validator2 to finish it's job and then passes down the response of Validator1.
+This is very interesting as you can see Java 8 Stream API worked as intended until findFirst(). And although it already has the first response, but it findFirst() does not pass it down the stream until all threads who are currently in progress (not all jobs) finish their tasks and that's by design to guaranty that the application code after the stream api, won't rise any concurrent access issue to any of the data structures we are dealing with during jobs process. 
+Stream API parallel mode uses by default Threadpool with the size of available processors, And in our case it unnecessarily waits also for Validator2 to finish it's job and then passes down the response of Validator1.
 
-So Java 8 Stream API did not work for this specific problem. //tell me more
+So Java 8 Stream API did not work efficiently for this specific problem unless extra wait for results of concurrent jobs are acceptable.
 
 ##Second solution: using reactive streams and project reactor
 
@@ -190,5 +195,5 @@ Validations Result is ready. time: 2019-06-12T12:52:11.651Z , success: false
 As you can see, as soon as the failed validation happened, we managed to end the flow and did not waste time waiting for the other validator as the final result is already determined.
 
 ##Conclusion
-`project reactor` provides a very powerful API to do parallel and non-blocking way of programming. When Running concurrent jobs and determining the first job which meets a specific condition as quickly as possible is easily doable by project reactor out of the box processors while Java 8 Stream API does not succeed.
+`project reactor` provides a very powerful API to do parallel and non-blocking way of programming. When Running concurrent jobs and determining the first job which meets a specific condition as quickly as possible is easily doable by project reactor out of the box processors while Java 8 Stream API waits for all concurrent threads to finish processing first.
 you can use this while you have complex business validation for a user's request in enterprise applications.
