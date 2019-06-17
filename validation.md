@@ -1,26 +1,26 @@
-**What is the problem we are trying to solve?**
+**Dealing with asynchronous and parallel validation**
 
-There are scenarios when the outcome of a code block is depends on several separate expressions and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to waite for outcome of every single expression.
-Thinks of it like a `short circuit` in `if` statements, but in a parallel manner. One of the very common use cases is when you are developing a enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
+There are scenarios when the outcome of a code block is depends on several separate expressions and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to wait for outcome of every single expression.
+Thinks of it like a `short circuit` in `if` statements, but in a parallel manner. One of the very common use cases is when you are developing an enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
 
-To validate a request, you might need to do multiple `validations` and if all of them validate the request successfully, then we can continue with serving the request. 
+To validate a request, you might need to do multiple `validations` and if all of them validate the request successfully, then we can continue with serving the request.
 
 However, if any of the `validators` fails to validate, then user's request is invalid, regardless of all other validators result.
 
-we will do all of the validations asyncnorously and in parallel as their results are independent of each other. As soon as any of them fails, we don't want to waste time any more and respond back to the user.
+We will do all of the validations asynchronously and in parallel as their results are independent of each other. As soon as any of them fails, we don't want to waste time any more and respond back to the user.
 
 Now let's see some code.
 
 **Building blocks**
 
-we have an Interface that every validator class is going to implement it:
+We have an Interface that every validator class is going to implement:
 ```
 public interface Validator {
     CompletableFuture<ValidationResponse> validate();
 }
 ```
 
-next is our first validator which returns a failed response after 2 seconds:  
+Next is our first validator which returns a failed response after 2 seconds:  
 ```
 public class Validator1 implements Validator{
 
@@ -35,14 +35,14 @@ public class Validator1 implements Validator{
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        return new ValidationResponse(false, ValidationFailurReason.ORDER_ALREADY_EXISTS);
+        return new ValidationResponse(false, ValidationFailureReason.ORDER_ALREADY_EXISTS);
     }
 }
 ```
 
 
-second validators which returns a success response after 5 seconds:
-```$xslt
+Our second validator returns a success response after 5 seconds:
+```
 public class Validator2 implements Validator{
 
     public CompletableFuture<ValidationResponse> validate()  {
@@ -50,9 +50,7 @@ public class Validator2 implements Validator{
     }
 
     public ValidationResponse doStuff()  {
-
         System.out.println("Validator2 started. time: "+ Instant.now());
-
         try {
             TimeUnit.SECONDS.sleep(5);
         } catch (InterruptedException e) {
@@ -63,32 +61,28 @@ public class Validator2 implements Validator{
 }
 ```
 
-and ValidationResponse can be any object, like this:
-```$xslt
+TheValidationResponse can be any object, like this:
+```
 public class ValidationResponse {
 
     private boolean isSuccessful;
-    private ValidationFailurReason reason;
+    private ValidationFailureReason reason;
     private Object optionalObject;
 
     public ValidationResponse(boolean isSuccessful) {
         this.isSuccessful = isSuccessful;
     }
 
-    public ValidationResponse(boolean isSuccessful,ValidationFailurReason reason) {
+    public ValidationResponse(boolean isSuccessful ,ValidationFailureReason reason) {
         this.isSuccessful = isSuccessful;
         this.reason = reason;
     }
-
-    /*
-    getters and setters
-    */ 
 }
 ```
 
-So what we aim for is to apply validation on user's request and reject it after 2 secs and do not wait for the other validator.
+So what we aim for is to validate the user's request and reject it after 2 secs and do not wait for the other validator.
 
-**First solution: using java stream API and completableFuture**
+**First solution: using Java Streams API and CompletableFuture**
 
 ```$xslt
     public void validate(){
@@ -152,7 +146,7 @@ For using it, Add the following dependency to your project:
     <artifactId>reactor-core</artifactId>
     <version>3.2.10.RELEASE</version>
 </dependency>
-``` 
+```
 And the code :
 ```$xslt
     Mono<ValidationResponse> cfValidation2Mono = Mono.fromFuture(cfValidation2);
