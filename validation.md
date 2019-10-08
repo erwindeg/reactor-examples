@@ -1,26 +1,30 @@
-**What is the problem we are trying to solve?**
+#Parallel short-circuiting with Reactive Programming
 
-There are scenarios when the outcome of a code block is depends on several separate expressions and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to waite for outcome of every single expression.
-Thinks of it like a `short circuit` in `if` statements, but in a parallel manner. One of the very common use cases is when you are developing a enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
+##Dealing with asynchronous and parallel validation
 
-To validate a request, you might need to do multiple `validations` and if all of them validate the request successfully, then we can continue with serving the request. 
+There are scenarios when the outcome of a code block is depends on several separate independent expressions (jobs) and if any of them goes wrong (or right depends on the problem), you can already decide about final result and you don't need to wait for outcome of every single expression.
+Thinks of it like a `short-circuit` in `if` statements, but in a parallel manner. In evaluating `A && B`, if `A` is false, then `B` is short-circuited (not evaluated) because it has no effect on the end result.
+
+One of the very common use cases is when you are developing an enterprise application and want to validate an end-user's request based on current business status of system before applying the request to the system.
+
+To validate a request, you might need to do multiple `validations` and if all of them validate the request successfully, then we can continue with serving the request.
 
 However, if any of the `validators` fails to validate, then user's request is invalid, regardless of all other validators result.
 
-we will do all of the validations asyncnorously and in parallel as their results are independent of each other. As soon as any of them fails, we don't want to waste time any more and respond back to the user.
+We will do all of the validations asynchronously and in parallel as their results are independent of each other. As soon as any of them fails, we don't want to waste time any more and respond back to the user.
 
 Now let's see some code.
 
-**Building blocks**
+##Building blocks
 
-we have an Interface that every validator class is going to implement it:
+We have an Interface that every validator class is going to implement:
 ```
 public interface Validator {
     CompletableFuture<ValidationResponse> validate();
 }
 ```
 
-next is our first validator which returns a failed response after 2 seconds:  
+Next is our first validator which returns a failed response after 2 seconds:  
 ```
 public class Validator1 implements Validator{
 
@@ -35,14 +39,14 @@ public class Validator1 implements Validator{
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        return new ValidationResponse(false, ValidationFailurReason.ORDER_ALREADY_EXISTS);
+        return new ValidationResponse(false, ValidationFailureReason.ORDER_ALREADY_EXISTS);
     }
 }
 ```
 
 
-second validators which returns a success response after 5 seconds:
-```$xslt
+Our second validator returns a success response after 5 seconds:
+```
 public class Validator2 implements Validator{
 
     public CompletableFuture<ValidationResponse> validate()  {
@@ -50,9 +54,7 @@ public class Validator2 implements Validator{
     }
 
     public ValidationResponse doStuff()  {
-
         System.out.println("Validator2 started. time: "+ Instant.now());
-
         try {
             TimeUnit.SECONDS.sleep(5);
         } catch (InterruptedException e) {
@@ -63,34 +65,32 @@ public class Validator2 implements Validator{
 }
 ```
 
-and ValidationResponse can be any object, like this:
-```$xslt
+The ValidationResponse can be any object, like this:
+```
 public class ValidationResponse {
 
     private boolean isSuccessful;
-    private ValidationFailurReason reason;
+    private ValidationFailureReason reason;
     private Object optionalObject;
 
     public ValidationResponse(boolean isSuccessful) {
         this.isSuccessful = isSuccessful;
     }
 
-    public ValidationResponse(boolean isSuccessful,ValidationFailurReason reason) {
+    public ValidationResponse(boolean isSuccessful ,ValidationFailureReason reason) {
         this.isSuccessful = isSuccessful;
         this.reason = reason;
     }
-
-    /*
-    getters and setters
-    */ 
 }
 ```
 
-So what we aim for is to apply validation on user's request and reject it after 2 secs and do not wait for the other validator.
+So what we aim for is to validate the user's request and reject it after 2 secs and do not wait for the other validator.
 
-**First solution: using java stream API and completableFuture**
+##Don't use java 8 Stream API
 
-```$xslt
+First solution that might come to mind is using parallel feature of java Stream API and then use a short circuit operator like `findFirst()`. 
+
+```
     public void validate(){
         Validator1 validator1 = new Validator1();
         Validator2 validator2 = new Validator2();
@@ -108,13 +108,13 @@ So what we aim for is to apply validation on user's request and reject it after 
                 .map(e -> {
                     System.out.println("after filter. Time: " + Instant.now() );
                     return e;
-                })
+                 })
                 .findFirst()
                 .ifPresent(validationFuture -> System.out.println("after findFirst. Time: " + Instant.now() ));
     }
 ```
 and `checkValidationResponse` log the time when each validationResponse hit the method and at the end just does a blocking `join()` to return.
-```$xslt
+```
     private Boolean checkValidationResponse(CompletableFuture<ValidationResponse> validationResponseCF) {
         return validationResponseCF.thenApply(validationResponse -> {
             if (validationResponse.isFailed()){
@@ -128,7 +128,7 @@ and `checkValidationResponse` log the time when each validationResponse hit the 
 ```
 
 If we run the code, the terminal looks like this:
-```$xslt
+```
 Validator2 started. time: 2019-06-12T11:49:50.808Z
 Validator1 started. Time: 2019-06-12T11:49:50.808Z
 found failed one. Time: 2019-06-12T11:49:52.828Z Thread is ForkJoinPool.commonPool-worker-2
@@ -137,24 +137,25 @@ found successful one. Time: 2019-06-12T11:49:55.827Z Thread is ForkJoinPool.comm
 after findFirst. Time: 2019-06-12T11:49:55.828Z
 ```
 
-This is very interesting as you can see java 8 stream API worked as intended until findFirst(). And although it already has the first response, but it findFirst() does not pass it down the stream until all elements get processed. So in our case it unnecessarily waits also for Validator2 to finish it's job and then passes down the response of Validator1.
+This is very interesting as you can see Java 8 Stream API worked as intended until findFirst(). And although it already has the first response, but it findFirst() does not pass it down the stream until all threads who are currently in progress (not all jobs) finish their tasks and that's by design to guaranty that the application code after the stream api, won't rise any concurrent access issue to any of the data structures we are dealing with during jobs process. 
+Stream API parallel mode uses by default Threadpool with the size of available processors, And in our case it unnecessarily waits also for Validator2 to finish it's job and then passes down the response of Validator1.
 
-So java 8 stream api did not work for this specefic problem.
+So Java 8 Stream API did not work efficiently for this specific problem unless extra wait for results of concurrent jobs are acceptable.
 
-**Second solution: using reactive streams and project reactor**
+##Second solution: using reactive streams and project reactor
 
-Now we are going to do the same test using `project reactor`. `Project reactor` is an implementation of `reactive streams` from `pivotal`.
+Now we are going to do the same test using `project reactor`. `Project reactor` is an implementation of `reactive streams` from `Pivotal`.
 
 For using it, Add the following dependency to your project:
-```$xslt
+```
 <dependency>
     <groupId>io.projectreactor</groupId>
     <artifactId>reactor-core</artifactId>
     <version>3.2.10.RELEASE</version>
 </dependency>
-``` 
+```
 And the code :
-```$xslt
+```
     Mono<ValidationResponse> cfValidation2Mono = Mono.fromFuture(cfValidation2);
     Mono<ValidationResponse> cfValidation1Mono = Mono.fromFuture(cfValidation1);
 
@@ -175,7 +176,7 @@ And the code :
 
 Let's have a closer look at the way we assembled the reactive pipeline
 
-`Schedulers.parallel()` use a fixed threadpool with the size of number of cpu cores. If you need more thread, you can use `Schedulers.elastic()`.
+`Schedulers.parallel()` uses a fixed threadpool with the size of number of cpu cores. If you need more threads, you can use `Schedulers.elastic()`.
 `flatMap` is needed to flatten `ParallelFlux<Mono<ValidationResponse>>` to `ParallelFlux<ValidationResponse>`.
 `sequential()` changes the pipeline from parallel to flux again for downstream processors.
 `switchIfEmpty()` subscribes to another publisher if it receives no element. So in our case we if receive no element, it means all validators returned success responds, so we just subscribe to `Mono.just(new ValidationResponse(true))`.
@@ -183,7 +184,7 @@ Let's have a closer look at the way we assembled the reactive pipeline
 
 Now time to run this piece of code and check the behaviour:
 
-```$xslt
+```
 Validator1 started. Time: 2019-06-12T12:52:09.623Z
 Validator2 started. time: 2019-06-12T12:52:09.623Z
 [DEBUG] (main) Using Console logging
@@ -191,8 +192,8 @@ found failed one. Time: 2019-06-12T12:52:11.651Z Thread is ForkJoinPool.commonPo
 Validations Result is ready. time: 2019-06-12T12:52:11.651Z , success: false
 ```
 
-As you can see, as soon as the failed validation happened, we managed to end the flow and did not wast time waiting for the other validator as the final result is already determined.
+As you can see, as soon as the failed validation happened, we managed to end the flow and did not waste time waiting for the other validator as the final result is already determined.
 
- **Conclusion**
- `project reactor` provides a very powerful API to do parallel and non-blocking way of programming. When Running concurrent jobs and determining the first job which meets a specific condition as quickly as possible is easily doable by project reactor out of the box processors while Java 8 Stream API does not succeed.
- you can use this while you have complex business validation for a user's request in enterprise applications.
+##Conclusion
+`project reactor` provides a very powerful API to do parallel and non-blocking way of programming. When Running concurrent jobs and determining the first job which meets a specific condition as quickly as possible is easily doable by project reactor out of the box processors while Java 8 Stream API waits for all concurrent threads to finish processing first.
+you can use this while you have complex business validation for a user's request in enterprise applications.
